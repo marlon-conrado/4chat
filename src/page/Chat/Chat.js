@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from "react";
-import io from "socket.io-client";
-import axios from "axios";
 import Contacts from "../../components/Chat/Contacts/Contacts";
-import { ContactContainer, Container, ChatMessagesContainer } from "./Styles";
+import {
+  ContactContainer,
+  Container,
+  ChatMessagesContainer,
+  ScrollContainer,
+  ContainerInputChat
+} from "./Styles";
 import ChatMessages from "../../components/Chat/ChatMessages/ChatMessages";
 import InputChat from "../../components/Chat/InputChat/InputChat";
+import * as chatService from "../../services/chat";
+import * as chatEvent from "../../events/chat";
 
-const api = "http://localhost:8080";
-const socket = io(`${api}/profile`);
-const clientAxios = axios.create({ baseURL: api });
+const SIDE_BAR_WIDTH = "400px";
 
 const Chat = () => {
   const [messages, setMessages] = useState([]);
@@ -17,7 +21,6 @@ const Chat = () => {
   const [selectedChat, setSelectedChat] = useState();
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get("id");
-  const sideBarWidth = "400px";
 
   const scrollToDown = element => {
     element.scrollTop = element.scrollHeight;
@@ -26,42 +29,32 @@ const Chat = () => {
   // New messages
   useEffect(() => {
     if (!selectedChat) return;
-    socket.removeAllListeners();
 
-    socket.on(`/chat/message/${selectedChat}`, function (msgs = []) {
-      setMessages(msgs);
-      scrollToDown(document.getElementById("scroll-container"));
-    });
+    chatEvent
+      .listenNewMessages({ selectedChatId: selectedChat })
+      .subscribe(msgs => {
+        setMessages(msgs);
+        scrollToDown(document.getElementById("scroll-container"));
+      });
   }, [selectedChat]);
 
   // Get all chats
   useEffect(() => {
-    clientAxios.get(`/chats/${userId}`).then(resp => {
-      setChats(resp.data);
-    });
+    chatService.getListChat({ userId }).then(setChats);
   }, []);
 
   // Get all chat messages
   useEffect(() => {
     if (!selectedChat) return;
 
-    clientAxios.get(`/chat/messages/${selectedChat}`).then(resp => {
-      setMessages(resp.data);
+    chatService.getMessages({ selectedChatId: selectedChat }).then(data => {
+      setMessages(data);
       scrollToDown(document.getElementById("scroll-container"));
     });
   }, [selectedChat]);
 
   const sendMessage = () => {
-    socket.emit("/chat/message", {
-      user: {
-        id: userId
-      },
-      msg: {
-        text: message,
-        chatId: selectedChat
-      }
-    });
-
+    chatEvent.emitNewMessage({ userId, chatId: selectedChat, message });
     setMessage("");
   };
 
@@ -101,7 +94,7 @@ const Chat = () => {
 
   return (
     <Container>
-      <ContactContainer width={sideBarWidth}>
+      <ContactContainer width={SIDE_BAR_WIDTH}>
         <Contacts
           options={mappedChats}
           onClick={selectChat}
@@ -112,30 +105,17 @@ const Chat = () => {
       <ChatMessagesContainer>
         {selectedChat && (
           <>
-            <div
-              id="scroll-container"
-              style={{
-                height: "92vh",
-                overflow: "auto"
-              }}
-            >
+            <ScrollContainer id="scroll-container">
               <ChatMessages messages={mappedMessages} />
-            </div>
+            </ScrollContainer>
 
-            <div
-              style={{
-                position: "fixed",
-                bottom: "0",
-                height: "8vh",
-                width: `calc(100% - ${sideBarWidth})`
-              }}
-            >
+            <ContainerInputChat sideBarWidth={SIDE_BAR_WIDTH}>
               <InputChat
                 value={message}
                 onChange={onChangeChatMessage}
                 onClick={sendMessage}
               />
-            </div>
+            </ContainerInputChat>
           </>
         )}
       </ChatMessagesContainer>
